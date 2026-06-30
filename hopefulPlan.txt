@@ -1,0 +1,247 @@
+Your architectural instincts are incredibly sharp. What you are describing—a split-memory system with background consolidation and modular tool execution—is exactly what the industry calls an **"Agentic Unconscious"** architecture. It is the exact paradigm shift top engineers are currently making to get past the limitations of stateless, slow LLMs.
+
+Given your hardware constraints (a 16GB RAM Windows laptop without a dedicated GPU) and your ambitious goal of executing wild system-level tasks, we have to engineer this with ruthless efficiency. We cannot just throw raw data at the model and hope it doesn't crash your system.
+
+Here is your detailed, technical roadmap for **S.H.A.D.O.W. Version 3.0**.
+
+---
+
+### 🧠 1. The Memory Architecture: Beating the Database Locks
+
+In the previous version, we discovered that file-based databases like Cognee's internal `ladybug` (for graphs) and `lancedb` (for vectors) will crash or throw locking errors if multiple tasks try to write to them at exactly the same time.
+
+To fix this, we will implement a **Strict Sequential Async Queue**.
+
+Instead of writing to the database the second you type a fact, S.H.A.D.O.W. will drop the fact into an internal waiting room (a queue). A single background worker (the "Subconscious Daemon") will silently process this queue one item at a time while you continue chatting seamlessly.
+
+* **Conscious Mind:** Remains your blazing-fast local `conscious_memory.json` file.
+
+
+* **Subconscious Write-Queue:** Uses Python's native `asyncio.Queue()` to completely eliminate database locking errors.
+* **Dream Mode (Consolidation):** When you type `quit` or S.H.A.D.O.W. detects 10 minutes of idle time, it runs `cognee.cognify()` in one heavy batch to organize the graph, protecting your CPU during active work hours.
+
+
+
+### ⚡ 2. The Model Footprint: Managing 16GB RAM
+
+To give S.H.A.D.O.W. the ability to scrape the web, read OCR, and parse terminal outputs, the LLM needs strong logical reasoning.
+
+* **The Brain:** Stick to **`qwen2.5:14b`** via Ollama. It requires roughly 9GB of RAM.
+
+
+* **The Constraint:** This leaves you with ~7GB for Windows, your code editor, and system execution. You **must** keep the context window tightly capped at `num_ctx: 2048` or `4096`. If you let the context window balloon, Ollama will overflow into your CPU swap space, and your laptop will freeze.
+
+
+
+### 🛠️ 3. The Action Layer: Model Context Protocol (MCP)
+
+You absolutely do not need to write custom Python scripts for every single "wild" task. The secret to making S.H.A.D.O.W. endlessly flexible is the **Model Context Protocol (MCP)**.
+
+Because MCP servers are heavily standardized (and frequently written in Node.js/TypeScript), you can instantly spin up isolated local servers that talk directly to S.H.A.D.O.W. via standard input/output (`stdio`).
+
+Here is how you scale the system capabilities:
+
+1. **File System & OS Control:** You run an open-source MCP file-system server. S.H.A.D.O.W. automatically inherits the ability to read directories, create folders, and modify files.
+2. **Web Scraping & Research:** You plug in a Puppeteer/Playwright MCP server. If you ask about a new framework, S.H.A.D.O.W. uses the tool to silently open a headless browser, scrape the documentation, and summarize the new syntax.
+3. **Terminal Execution:** You attach a Bash/CLI MCP server. If you ask, *"Check my local network status"*, S.H.A.D.O.W. requests terminal execution, runs standard commands, reads the output, and reports back.
+
+---
+
+### 💻 The Version 3.0 Core Implementation
+
+Here is the exact asynchronous architecture required to tie the fast conscious memory, the background subconscious queue, and the tool-calling logic together safely on your hardware.
+
+Update your `shadow.py` with this asynchronous event loop pattern:
+
+```python
+import asyncio
+import os
+import json
+import cognee
+import ollama
+from datetime import datetime
+
+# --- System Configuration ---
+MODEL = "qwen2.5:14b"
+HISTORY_FILE = "conscious_memory.json"
+MAX_HISTORY_TURNS = 10
+
+# Create a queue to handle background graph writes without locking the database
+memory_queue = asyncio.Queue()
+
+# --- 1. The Subconscious Background Daemon ---
+async def memory_worker():
+    """Runs continuously in the background, writing facts strictly one-by-one."""
+    while True:
+        fact = await memory_queue.get()
+        try:
+            print(f"\n[Subconscious] Weaving into knowledge graph: {fact[:30]}...")
+            await cognee.add(fact, dataset_name="shadow_memory")
+        except Exception as e:
+            print(f"[Subconscious Error] {e}")
+        finally:
+            memory_queue.task_done()
+
+async def trigger_dream_mode():
+    """The heavy consolidation step. Call this when idle or shutting down."""
+    print("\n[Shadow is entering Dream Mode... Consolidating graph]")
+    try:
+        await cognee.cognify()
+        print("[Dream Mode Complete]")
+    except Exception as e:
+        print(f"[Dream Mode Skipped: {e}]")
+
+# --- 2. Fact Detection ---
+FACT_TRIGGERS = ["my name is", "remember that", "due on", "deadline", "i prefer"]
+
+def looks_like_fact(text: str) -> bool:
+    return any(trigger in text.lower() for trigger in FACT_TRIGGERS)
+
+# --- 3. The Core Chat Loop ---
+async def think_and_act(user_input: str, history: list) -> str:
+    # 1. Fetch relevant memories (fast vector chunk search)
+    memory_context = "" # (Insert your cognee.search logic here)
+    
+    # 2. Build Prompt
+    system_prompt = "You are S.H.A.D.O.W. A highly capable local AI system..."
+    if memory_context:
+        system_prompt += f"\nKnown facts:\n{memory_context}"
+
+    messages = [{"role": "system", "content": system_prompt}] + history
+    messages.append({"role": "user", "content": user_input})
+
+    # 3. Stream or Call LLM (Optionally pass MCP Tools here)
+    response = ollama.chat(
+        model=MODEL,
+        messages=messages,
+        options={"num_ctx": 2048, "num_predict": 400}
+    )
+    
+    reply = response["message"]["content"]
+    
+    # 4. Check for facts and drop them in the queue (NON-BLOCKING)
+    if looks_like_fact(user_input):
+        timestamped_fact = f"[{datetime.now().date()}] {user_input}"
+        await memory_queue.put(timestamped_fact)
+
+    return reply
+
+# --- 4. Application Initialization ---
+async def main():
+    print("========================================")
+    print("  S.H.A.D.O.W. AI  v3.0 (Agentic Mode)")
+    print("========================================")
+    
+    # Start the background memory worker
+    worker_task = asyncio.create_task(memory_worker())
+    history = [] # (Load from conscious_memory.json)
+
+    try:
+        while True:
+            user_input = input("\nYou: ").strip()
+            if user_input.lower() in ["quit", "exit"]:
+                print("Shadow: Entering shutdown sequence...")
+                break
+            
+            reply = await think_and_act(user_input, history)
+            print(f"Shadow: {reply}")
+            
+            # (Save history to json here)
+
+    except KeyboardInterrupt:
+        print("\nShadow: Emergency shutdown.")
+    finally:
+        # Graceful shutdown: wait for the queue to empty, then run Dream Mode
+        await memory_queue.join() 
+        await trigger_dream_mode()
+        worker_task.cancel()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+```
+
+### The Next Move
+
+Get this asynchronous queue architecture running cleanly first. Once your memory is completely stable and locking errors are eliminated, we will hook up your first local MCP server via Node.js so S.H.A.D.O.W. can start directly manipulating your local file directories.
+
+
+To transition **S.H.A.D.O.W. (Semantic Hierarchical Autonomous Directed Ontological Weaver)** from a reactive text loop into an active, system-controlling powerhouse that operates completely offline on your 16GB laptop, we need a concrete build strategy.
+
+Here is the step-by-step execution plan to layer on the advanced "wild capabilities" without breaking your system's RAM or database constraints.
+
+---
+
+## ## Phase 1: Lock Down the Asynchronous Foundation (Immediate)
+
+Before letting S.H.A.D.O.W. execute scripts or read your screen, the dual-layer memory must be completely unbreakable.
+
+* **Implement the Async Queue:** Lock in the `asyncio.Queue` structure we mapped out to isolate `conscious_memory.json` updates from the slower background graph commits.
+
+
+* **Test the "Dream Mode" Switch:** Verify that calling `cognee.cognify()` occurs strictly when the application closes or during idle thresholds, preventing the 2–5 minute CPU lockup from interrupting your active chat turns.
+
+
+* **Enforce Anti-Hallucination Prompting:** Ensure your system instruction strictly dictates that the model handles thin vector recall arrays by stating *"I don't have that on record"* instead of guessing.
+
+
+
+---
+
+## ## Phase 2: Establish the Tool Gatekeeper (Model Context Protocol Client)
+
+Instead of writing custom, bug-prone Python code for every individual system task, you should integrate a **Model Context Protocol (MCP) Client** directly into your main orchestration script.
+
+MCP uses lightweight JSON-RPC over standard input/output (`stdio`), enabling your assistant to communicate seamlessly with pre-packaged native tools without bloating the `qwen2.5:14b` context window.
+
+```
+[User Input] ──> [Orchestrator Core] ──> [MCP Tool Router] ──> [Local JSON-RPC Bridge] ──> [System Action]
+
+```
+
+To optimize performance on your laptop, you can install the official Python MCP package within your virtual environment (`venv`):
+
+```bash
+pip install mcp
+
+```
+
+---
+
+## ## Phase 3: The "Wild Task" Expansion Matrix
+
+Once the MCP client layer is active, you can progressively plug in independent open-source tool servers to scale S.H.A.D.O.W.'s physical capabilities.
+
+| Capability Layer | Underlying Technology | How It Works Locally |
+| --- | --- | --- |
+| **File Automation** | `ellmos-filecommander-mcp`<br> | Automatically handles secure file creation, directory navigation, and file restructuring workflows on your laptop.
+
+ |
+| **System Operations & CUDA** | Local Bash / Powershell Server | S.H.A.D.O.W. generates and executes precise system commands locally, tracking hardware states or background process statuses.
+
+ |
+| **Screen Perception** | `MarkItDown` + OCR Wrapper
+
+ | Captures desktop displays or captures open documents, runs local text extraction, and passes a minimal summary back to the loop.
+
+ |
+| **Web Research & Scraping** | Puppeteer / Playwright MCP | Launches headless local browsers on command to search documentation pages or extract plain text definitions.
+
+ |
+
+---
+
+## ## Phase 4: Voice Synthesis Activation (The Wow Factor)
+
+Once the tool logic functions flawlessly via standard typing, introduce the final offline sensory layer:
+
+1. **Audio Ingestion:** Add `faster-whisper` (large-v3 compressed using INT8 compute) to capture microphone audio and transcribe it within milliseconds on your CPU.
+
+
+2. **Audio Output:** Route the assistant's final string response to `Kokoro TTS` using its ultra-efficient 82M param ONNX runtime for highly realistic, completely offline vocal output.
+
+
+
+---
+
+Which specific "wild capability"—such as executing local terminal scripts to check system operations, managing file directories, or implementing web scraping for real-time research—do you want to map out the exact Python integration template for first?
