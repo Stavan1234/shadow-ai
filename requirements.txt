@@ -1,0 +1,24 @@
+# Core runtime (direct dependencies)
+cognee==1.2.2
+ollama==0.6.2
+python-dotenv==1.2.2
+
+# Optional — document ingestion (Phase C)
+markitdown[ocr]==0.1.6
+
+# Cognee pulls these transitively; pin for reproducible installs
+lancedb==0.33.0
+torch==2.12.1
+transformers==5.12cd.1
+
+#Laptop specifications
+Device name	DESKTOP-TSUIOTU
+Processor	Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz (1.80 GHz)
+Installed RAM	16.0 GB (15.9 GB usable)
+Graphics card	Intel(R) UHD Graphics 620 (128 MB)
+Storage	186 GB of 238 GB used
+Device ID	51508754-3E91-4FB0-87F4-42E475A15761
+Product ID	00330-52654-67321-AAOEM
+System type	64-bit operating system, x64-based processor
+
+
