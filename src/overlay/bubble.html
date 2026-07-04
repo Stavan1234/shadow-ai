@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>S.H.A.D.O.W.</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000000 !important;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 140px;
+      height: 140px;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    
+    .aura-container {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000000 !important;
+    }
+    
+    /* Glowing Aura Element */
+    .glow-aura {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      filter: blur(12px);
+      opacity: 0.4;
+      transition: all 0.8s ease-in-out;
+      z-index: 1;
+    }
+    
+    /* Central Interactive Ring */
+    .core-ring {
+      position: absolute;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    /* Outer Ripple Rings */
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      border: 1.5px solid transparent;
+      opacity: 0;
+      width: 70px;
+      height: 70px;
+      transition: all 0.5s ease;
+      z-index: 2;
+    }
+    
+    /* --- STATE-SPECIFIC DESIGNS --- */
+    
+    /* ASLEEP State: Soft breathing indigo aura, no hard circle */
+    .state-asleep .glow-aura {
+      background: radial-gradient(circle, #4f46e5 0%, #311042 70%);
+      width: 45px;
+      height: 45px;
+      opacity: 0.35;
+      animation: breathe 3.5s infinite ease-in-out;
+    }
+    .state-asleep .core-ring {
+      border-color: rgba(99, 102, 241, 0.25);
+      background: rgba(15, 23, 42, 0.15); /* very transparent dark slate */
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.15);
+      animation: pulse-ring 3.5s infinite ease-in-out;
+    }
+    
+    /* LISTENING State: Glowing cyan ring, expand auras and ripples */
+    .state-listening .glow-aura {
+      background: radial-gradient(circle, #06b6d4 0%, #0891b2 75%);
+      width: 65px;
+      height: 65px;
+      opacity: 0.5;
+      filter: blur(15px);
+      animation: breathe-fast 1.5s infinite ease-in-out;
+    }
+    .state-listening .core-ring {
+      border-color: rgba(6, 182, 212, 0.85);
+      background: rgba(6, 182, 212, 0.05);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.6), inset 0 0 8px rgba(6, 182, 212, 0.3);
+      width: 58px;
+      height: 58px;
+      animation: pulse-ring 1.5s infinite ease-in-out;
+    }
+    .state-listening .ripple {
+      border-color: rgba(6, 182, 212, 0.35);
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+      opacity: 1;
+      animation: ripple-out 1.5s infinite cubic-bezier(0.1, 0.8, 0.3, 1);
+    }
+    
+    /* PROCESSING State: Morphing magenta spinner aura */
+    .state-processing .glow-aura {
+      background: radial-gradient(circle, #d946ef 0%, #8b5cf6 80%);
+      width: 70px;
+      height: 70px;
+      opacity: 0.55;
+      filter: blur(16px);
+      animation: morph-blob 2.2s infinite ease-in-out;
+    }
+    .state-processing .core-ring {
+      border-color: transparent;
+      border-top-color: rgba(217, 70, 239, 0.8);
+      border-bottom-color: rgba(139, 92, 246, 0.8);
+      width: 62px;
+      height: 62px;
+      box-shadow: 0 0 20px rgba(217, 70, 239, 0.4);
+      animation: spin 1s infinite linear;
+    }
+    
+    /* CONFIRMING State: Warning amber glow */
+    .state-confirming .glow-aura {
+      background: radial-gradient(circle, #f59e0b 0%, #b45309 80%);
+      width: 55px;
+      height: 55px;
+      opacity: 0.45;
+      filter: blur(14px);
+    }
+    .state-confirming .core-ring {
+      border-color: rgba(245, 158, 11, 0.8);
+      background: rgba(245, 158, 11, 0.05);
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.5);
+      animation: pulse-ring 1s infinite ease-in-out;
+    }
+    
+    /* SPEAKING State: Green visualizer bars bouncing inside an organic ring */
+    .state-speaking .glow-aura {
+      background: radial-gradient(circle, #10b981 0%, #047857 75%);
+      width: 60px;
+      height: 60px;
+      opacity: 0.45;
+      filter: blur(15px);
+      animation: breathe 2s infinite ease-in-out;
+    }
+    .state-speaking .core-ring {
+      border-color: rgba(16, 185, 129, 0.7);
+      background: rgba(16, 185, 129, 0.03);
+      box-shadow: 0 0 18px rgba(16, 185, 129, 0.4);
+      width: 58px;
+      height: 58px;
+    }
+    
+    /* Audio visualizer bars (SPEAKING state) */
+    .visualizer {
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      width: 26px;
+      height: 20px;
+      z-index: 10;
+    }
+    .state-speaking .visualizer {
+      display: flex;
+    }
+    .bar {
+      width: 3.5px;
+      height: 100%;
+      background-color: #ffffff;
+      border-radius: 1.5px;
+      box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+      animation: bounce 0.6s infinite ease-in-out alternate;
+    }
+    .bar:nth-child(1) { height: 45%; animation-duration: 0.5s; }
+    .bar:nth-child(2) { height: 100%; animation-duration: 0.7s; animation-delay: 0.15s; }
+    .bar:nth-child(3) { height: 75%; animation-duration: 0.6s; animation-delay: 0.3s; }
+    .bar:nth-child(4) { height: 35%; animation-duration: 0.45s; animation-delay: 0.45s; }
+    
+    /* --- KEYFRAME ANIMATIONS --- */
+    @keyframes breathe {
+      0%, 100% { transform: scale(0.9); opacity: 0.35; }
+      50% { transform: scale(1.15); opacity: 0.45; }
+    }
+    @keyframes breathe-fast {
+      0%, 100% { transform: scale(0.95); opacity: 0.4; }
+      50% { transform: scale(1.2); opacity: 0.65; }
+    }
+    @keyframes pulse-ring {
+      0%, 100% { transform: scale(0.96); }
+      50% { transform: scale(1.04); }
+    }
+    @keyframes ripple-out {
+      0% { transform: scale(0.85); opacity: 0.8; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes bounce {
+      0% { transform: scaleY(0.2); }
+      100% { transform: scaleY(1.0); }
+    }
+    @keyframes morph-blob {
+      0%, 100% { border-radius: 50% 50% 50% 50%; transform: rotate(0deg); }
+      33% { border-radius: 35% 65% 50% 50%; transform: rotate(120deg) scale(1.05); }
+      66% { border-radius: 50% 40% 65% 45%; transform: rotate(240deg) scale(0.95); }
+    }
+  </style>
+</head>
+<body class="state-asleep" id="body">
+  <div class="aura-container">
+    <div class="glow-aura"></div>
+    <div class="ripple"></div>
+    <div class="core-ring">
+      <div class="visualizer">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function updateBubbleState(state) {
+      const body = document.getElementById('body');
+      body.className = '';
+      
+      switch (state.toUpperCase()) {
+        case 'ASLEEP':
+          body.className = 'state-asleep';
+          break;
+        case 'LISTENING':
+          body.className = 'state-listening';
+          break;
+        case 'PROCESSING':
+          body.className = 'state-processing';
+          break;
+        case 'CONFIRMING':
+          body.className = 'state-confirming';
+          break;
+        case 'SPEAKING':
+          body.className = 'state-speaking';
+          break;
+        default:
+          body.className = 'state-asleep';
+      }
+    }
+  </script>
+</body>
+</html>
