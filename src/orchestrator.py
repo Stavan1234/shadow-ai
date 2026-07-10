@@ -23,6 +23,10 @@ from src.stt.transcribe import transcribe
 from src.tts.speak import speak, pre_render_fillers, play_random_filler
 from src.lifecycle.sleep_wake import teardown_subsystems
 from src.router.tiers import route
+from src.llm.client import chat
+from src.memory.fast_recall import fast_recall
+from src.memory.document_qa import answer_from_document, queue_document_fact
+from src.memory.cognee_worker import memory_worker, memory_queue
 
 # Initialize FastAPI for wake trigger
 app = FastAPI()
@@ -33,6 +37,21 @@ SLEEP_PHRASES = {"go to sleep shadow", "shadow go to sleep", "shadow sleep now"}
 def check_sleep_command(transcript: str) -> bool:
     """Returns True if the transcript exactly matches a sleep command."""
     return transcript.strip().lower() in SLEEP_PHRASES
+
+def resolve_document_path(filename: str) -> str:
+    """Search the workspace for a file matching the filename."""
+    if Path(filename).exists():
+        return str(Path(filename).resolve())
+    workspace_file = PROJECT_ROOT / filename
+    if workspace_file.exists():
+        return str(workspace_file.resolve())
+    data_file = PROJECT_ROOT / "data" / filename
+    if data_file.exists():
+        return str(data_file.resolve())
+    for p in PROJECT_ROOT.rglob(filename):
+        if p.is_file():
+            return str(p.resolve())
+    return ""
 
 class WakePayload(BaseModel):
     wake: bool
@@ -162,10 +181,76 @@ async def run_voice_loop():
             
             # 4. State: SPEAKING
             set_state(ShadowState.SPEAKING)
-            reply = f"Routing to {tier_name}. You said: {transcript}."
+            
+            perf.mark("llm_generation_start")
+            
+            reply = ""
+            if tier_name == "TIER_1_CHAT":
+                # Standard Conversational Chat
+                reply = await asyncio.to_thread(chat, transcript, "You are S.H.A.D.O.W., a highly capable desktop virtual assistant. Answer concisely.")
+                
+            elif tier_name == "TIER_2_MEMORY":
+                # Check if it's a store action
+                is_store = any(w in transcript.lower() for w in ["remember", "store", "save", "write down"])
+                if is_store:
+                    # Extract the precise fact using the LLM
+                    fact_prompt = f"Extract the fact to remember from this statement: '{transcript}'. Output only the fact itself, as a short declarative statement, with absolutely no extra commentary."
+                    fact = await asyncio.to_thread(chat, fact_prompt)
+                    # Enqueue the fact to background worker queue
+                    await memory_queue.put(fact)
+                    reply = f"I have queued that to memory, Sir: {fact}."
+                else:
+                    # Recall action
+                    matches = await asyncio.to_thread(fast_recall, transcript)
+                    if matches:
+                        context_str = "\n".join(f"- {m['text']}" for m in matches)
+                        print(f"[Memory Recall] Retrieved context:\n{context_str}")
+                        recall_prompt = (
+                            f"Using only the following memory context, answer the user's question. "
+                            f"If the answer cannot be found in the context, synthesize a response using the context as background information.\n\n"
+                            f"Context:\n{context_str}\n\n"
+                            f"Question: {transcript}"
+                        )
+                        reply = await asyncio.to_thread(chat, recall_prompt)
+                    else:
+                        # Fallback to chat if recall returns nothing
+                        reply = await asyncio.to_thread(chat, transcript)
+                        
+            elif tier_name == "TIER_3_ACTION":
+                reply = f"Executing desktop actions is not fully integrated yet, but I recognized your command: {transcript}."
+                
+            elif tier_name == "TIER_4_DEEP_REASONING":
+                # Deep reasoning
+                reply = await asyncio.to_thread(chat, transcript, "You are S.H.A.D.O.W. in Deep Reasoning mode. Think step-by-step to answer the user query clearly and thoroughly.")
+                
+            elif tier_name == "TIER_5_DOCUMENT_QA":
+                # Extract filename
+                import re
+                filename_match = re.search(r"[\w.-]+\.(pdf|docx|txt|md)\b", transcript, re.I)
+                filename = filename_match.group(0) if filename_match else ""
+                
+                if filename:
+                    # Resolve path
+                    resolved_path = resolve_document_path(filename)
+                    if resolved_path:
+                        print(f"[Document QA] Resolved {filename} to {resolved_path}")
+                        # Perform Document Q&A (foreground read)
+                        reply = await asyncio.to_thread(answer_from_document, transcript, resolved_path)
+                        # Queue fact building in background (non-blocking)
+                        asyncio.create_task(queue_document_fact(resolved_path, transcript, reply))
+                    else:
+                        reply = f"I could not resolve the location of the file {filename} in your workspace."
+                else:
+                    # Fallback to standard chat if no filename detected
+                    reply = await asyncio.to_thread(chat, transcript)
+            else:
+                reply = await asyncio.to_thread(chat, transcript)
+                
+            perf.mark("llm_generation_end")
+            
             conscious.add_turn("assistant", reply)
             
-            # Speak the verbatim echo response
+            # Speak the response
             perf.mark("tts_speak_start")
             await asyncio.to_thread(speak, reply)
             perf.mark("tts_speak_end")
@@ -184,6 +269,9 @@ async def run_voice_loop():
             await asyncio.sleep(2.0)
 
 async def main():
+    # Start background Cognee memory queue worker
+    worker_task = asyncio.create_task(memory_worker())
+    
     # Run the uvicorn wake receiver server and the main voice orchestrator loop concurrently
     await asyncio.gather(
         start_wake_server(),
